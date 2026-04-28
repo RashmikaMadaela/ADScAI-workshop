@@ -34,5 +34,3 @@ test-results/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-
-.github/
