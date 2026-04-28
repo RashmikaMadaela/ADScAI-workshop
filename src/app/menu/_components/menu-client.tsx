@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/auth/client";
 
@@ -13,10 +13,24 @@ type MenuItem = {
   available: boolean;
 };
 
+type SlotInfo = {
+  time: string;
+  available: boolean;
+  remaining: number;
+};
+
 type Cart = Record<string, number>;
 
 function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatPickupTime(d: Date | string): string {
+  return new Date(d).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 const categoryEmoji: Record<string, string> = {
@@ -33,6 +47,21 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
+  const [successPickupAt, setSuccessPickupAt] = useState<string | null>(null);
+  const [pickupAt, setPickupAt] = useState<string | null>(null);
+  const [slots, setSlots] = useState<SlotInfo[] | null>(null);
+
+  const fetchSlots = () => {
+    fetch("/api/orders/slots")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: SlotInfo[]) => setSlots(data))
+      .catch(() => setSlots([]));
+  };
+
+  useEffect(() => {
+    if (!session?.user) return;
+    fetchSlots();
+  }, [session?.user]);
 
   const byCategory = useMemo(() => {
     return items.reduce<Record<string, MenuItem[]>>((acc, item) => {
@@ -69,6 +98,7 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
             menuItemId,
             quantity,
           })),
+          pickupAt: pickupAt ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -78,6 +108,9 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
       const order = await res.json();
       setCart({});
       setSuccessId(order.id);
+      setSuccessPickupAt(pickupAt);
+      setPickupAt(null);
+      fetchSlots();
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -114,7 +147,10 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
           }}
         >
           <span>
-            <strong>Order placed.</strong> We'll have it ready shortly.
+            <strong>Order placed.</strong>{" "}
+            {successPickupAt
+              ? `Pick up at ${formatPickupTime(successPickupAt)}.`
+              : "We'll have it ready shortly."}
           </span>
           <a href="/orders" className="btn btn-secondary" style={{ padding: "0.35rem 0.75rem", fontSize: "0.8rem" }}>
             View orders
@@ -255,41 +291,106 @@ export function MenuClient({ items }: { items: MenuItem[] }) {
             padding: "0.85rem 1rem 0.85rem 1.25rem",
             borderRadius: 14,
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+            flexDirection: "column",
+            gap: "0.75rem",
             boxShadow: "var(--shadow-lg)",
             marginTop: "1.5rem",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
-            <span
-              aria-hidden
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "var(--brand)",
-                fontSize: "0.85rem",
-                fontWeight: 700,
-              }}
-            >
-              {totalCount}
-            </span>
-            <div style={{ fontSize: "0.95rem" }}>
-              <div style={{ fontSize: "0.75rem", opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Your order
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.85rem" }}>
+              <span
+                aria-hidden
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: "var(--brand)",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                }}
+              >
+                {totalCount}
+              </span>
+              <div style={{ fontSize: "0.95rem" }}>
+                <div style={{ fontSize: "0.75rem", opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Your order
+                </div>
+                <strong style={{ fontVariantNumeric: "tabular-nums", fontSize: "1.05rem" }}>
+                  {formatPrice(totalCents)}
+                </strong>
               </div>
-              <strong style={{ fontVariantNumeric: "tabular-nums", fontSize: "1.05rem" }}>
-                {formatPrice(totalCents)}
-              </strong>
             </div>
+            <button type="button" onClick={placeOrder} disabled={submitting} className="btn btn-light">
+              {submitting ? "Placing…" : "Place order →"}
+            </button>
           </div>
-          <button type="button" onClick={placeOrder} disabled={submitting} className="btn btn-light">
-            {submitting ? "Placing…" : "Place order →"}
-          </button>
+
+          <div>
+            <div style={{ fontSize: "0.7rem", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.4rem" }}>
+              Pickup time (optional)
+            </div>
+            {slots === null ? (
+              <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>Loading slots…</span>
+            ) : slots.length === 0 ? (
+              <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>Slots unavailable</span>
+            ) : slots.every((s) => !s.available) ? (
+              <span style={{ fontSize: "0.85rem", opacity: 0.7 }}>No slots available today</span>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                {slots.map((slot) => {
+                  const isSelected = pickupAt === slot.time;
+                  const isDisabled = !slot.available;
+                  return (
+                    <button
+                      key={slot.time}
+                      type="button"
+                      onClick={() => {
+                        if (isDisabled) return;
+                        setPickupAt(isSelected ? null : slot.time);
+                      }}
+                      style={{
+                        padding: "0.3rem 0.65rem",
+                        borderRadius: 8,
+                        border: isSelected ? "2px solid white" : "1px solid rgba(255,255,255,0.25)",
+                        background: isSelected
+                          ? "white"
+                          : isDisabled
+                          ? "rgba(255,255,255,0.05)"
+                          : "rgba(255,255,255,0.1)",
+                        color: isSelected ? "#0f172a" : isDisabled ? "rgba(255,255,255,0.3)" : "white",
+                        fontSize: "0.8rem",
+                        fontWeight: isSelected ? 700 : 400,
+                        cursor: isDisabled ? "default" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.3rem",
+                      }}
+                    >
+                      {formatPickupTime(slot.time)}
+                      {slot.available && slot.remaining >= 1 && slot.remaining <= 3 && (
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            background: "rgba(255,200,0,0.25)",
+                            color: "rgb(255,200,0)",
+                            borderRadius: 4,
+                            padding: "0 0.3rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {slot.remaining} left
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </section>

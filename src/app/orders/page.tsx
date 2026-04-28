@@ -18,6 +18,14 @@ function formatDate(d: Date) {
   });
 }
 
+function formatPickupTime(d: Date | string): string {
+  return new Date(d).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function badgeClass(status: string) {
   const s = status.toLowerCase();
   if (s === "pending") return "badge badge-pending";
@@ -92,6 +100,11 @@ export default async function OrdersPage() {
                 <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 3 }}>
                   {formatDate(order.createdAt)}
                 </div>
+                {order.pickupAt && (
+                  <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 2 }}>
+                    Pickup: {formatPickupTime(order.pickupAt)}
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
