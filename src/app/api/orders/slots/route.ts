@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth/wrappers";
-import { OrderService, generateLunchSlots, SLOT_CAPACITY } from "@/lib/services/order";
+import { OrderService, generateLunchSlots, SLOT_CAPACITY, getNow } from "@/lib/services/order";
 
 function floorToSlot(d: Date): Date {
   const out = new Date(d);
@@ -17,12 +17,12 @@ export const GET = withAuth(async (req, _ctx) => {
     const [y, m, d] = dateParam.split("-").map(Number);
     date = new Date(y, m - 1, d);
   } else {
-    date = new Date();
+    date = getNow();
   }
 
   const counts = await OrderService.slotAvailability(date);
   const slots = generateLunchSlots(date);
-  const now = new Date();
+  const now = getNow();
   const floor = floorToSlot(now);
 
   const result = slots.map((slot) => {

@@ -2,6 +2,14 @@ import { prisma } from "@/lib/prisma";
 
 export const SLOT_CAPACITY = 10;
 
+/** Returns the current time. In development, DEV_NOW overrides it for testing. */
+export function getNow(): Date {
+  if (process.env.NODE_ENV !== "production" && process.env.DEV_NOW) {
+    return new Date(process.env.DEV_NOW);
+  }
+  return new Date();
+}
+
 function floorToSlot(d: Date): Date {
   const out = new Date(d);
   out.setMinutes(Math.floor(out.getMinutes() / 15) * 15, 0, 0);
@@ -72,10 +80,10 @@ export class OrderService {
       ) {
         throw new Error("pickupAt must be on a 15-minute boundary with zero seconds and milliseconds");
       }
-      if (parsed < floorToSlot(new Date())) {
+      if (parsed < floorToSlot(getNow())) {
         throw new Error("pickupAt is in the past");
       }
-      const today = new Date();
+      const today = getNow();
       const slotStart = new Date(today);
       slotStart.setHours(11, 30, 0, 0);
       const slotEnd = new Date(today);
